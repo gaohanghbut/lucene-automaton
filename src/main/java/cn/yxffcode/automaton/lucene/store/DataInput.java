@@ -16,6 +16,7 @@ package cn.yxffcode.automaton.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import cn.yxffcode.automaton.lucene.util.BitUtil;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
