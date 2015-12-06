@@ -18,7 +18,6 @@ package cn.yxffcode.automaton.util;
  */
 
 import java.io.DataInputStream;
-import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -30,43 +29,6 @@ import java.util.Properties;
  * @lucene.internal
  */
 public abstract class StringHelper {
-
-  /**
-   * Compares two {@link BytesRef}, element by element, and returns the
-   * number of elements common to both arrays (from the start of each).
-   *
-   * @param left The first {@link BytesRef} to compare
-   * @param right The second {@link BytesRef} to compare
-   * @return The number of common elements (from the start of each).
-   */
-  public static int bytesDifference(BytesRef left, BytesRef right) {
-    int len = left.length < right.length ? left.length : right.length;
-    final byte[] bytesLeft = left.bytes;
-    final int offLeft = left.offset;
-    byte[] bytesRight = right.bytes;
-    final int offRight = right.offset;
-    for (int i = 0; i < len; i++)
-      if (bytesLeft[i+offLeft] != bytesRight[i+offRight])
-        return i;
-    return len;
-  }
-  
-  /** 
-   * Returns the length of {@code currentTerm} needed for use as a sort key.
-   * so that {@link BytesRef#compareTo(BytesRef)} still returns the same result.
-   * This method assumes currentTerm comes after priorTerm.
-   */
-  public static int sortKeyLength(final BytesRef priorTerm, final BytesRef currentTerm) {
-    final int currentTermOffset = currentTerm.offset;
-    final int priorTermOffset = priorTerm.offset;
-    final int limit = Math.min(priorTerm.length, currentTerm.length);
-    for (int i = 0; i < limit; i++) {
-      if (priorTerm.bytes[priorTermOffset+i] != currentTerm.bytes[currentTermOffset+i]) {
-        return i+1;
-      }
-    }
-    return Math.min(1+priorTerm.length, currentTerm.length);
-  }
 
   private StringHelper() {
   }
@@ -84,31 +46,6 @@ public abstract class StringHelper {
    * Otherwise <code>false</code>.
    * 
    * @param ref
-   *         the {@code byte[]} to test
-   * @param prefix
-   *         the expected prefix
-   * @return Returns <code>true</code> iff the ref starts with the given prefix.
-   *         Otherwise <code>false</code>.
-   */
-  public static boolean startsWith(byte[] ref, BytesRef prefix) {
-    if (ref.length < prefix.length) {
-      return false;
-    }
-
-    for(int i=0;i<prefix.length;i++) {
-      if (ref[i] != prefix.bytes[prefix.offset+i]) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  /**
-   * Returns <code>true</code> iff the ref starts with the given prefix.
-   * Otherwise <code>false</code>.
-   * 
-   * @param ref
    *          the {@link BytesRef} to test
    * @param prefix
    *          the expected prefix
@@ -117,21 +54,6 @@ public abstract class StringHelper {
    */
   public static boolean startsWith(BytesRef ref, BytesRef prefix) {
     return sliceEquals(ref, prefix, 0);
-  }
-
-  /**
-   * Returns <code>true</code> iff the ref ends with the given suffix. Otherwise
-   * <code>false</code>.
-   * 
-   * @param ref
-   *          the {@link BytesRef} to test
-   * @param suffix
-   *          the expected suffix
-   * @return Returns <code>true</code> iff the ref ends with the given suffix.
-   *         Otherwise <code>false</code>.
-   */
-  public static boolean endsWith(BytesRef ref, BytesRef suffix) {
-    return sliceEquals(ref, suffix, ref.length - suffix.length);
   }
 
   private static boolean sliceEquals(BytesRef sliceToTest, BytesRef other, int pos) {
@@ -230,17 +152,11 @@ public abstract class StringHelper {
     return murmurhash3_x86_32(bytes.bytes, bytes.offset, bytes.length, seed);
   }
 
-  // Holds 128 bit unsigned value:
-  private static BigInteger nextId;
-  private static final BigInteger mask128;
-  private static final Object idLock = new Object();
-
   static {
     // 128 bit unsigned mask
     byte[] maskBytes128 = new byte[16];
     Arrays.fill(maskBytes128, (byte) 0xff);
-    mask128 = new BigInteger(1, maskBytes128);
-    
+
     String prop = System.getProperty("tests.seed");
 
     // State for xorshift128:
@@ -296,88 +212,6 @@ public abstract class StringHelper {
     // 64-bit unsigned mask
     byte[] maskBytes64 = new byte[8];
     Arrays.fill(maskBytes64, (byte) 0xff);
-    BigInteger mask64 = new BigInteger(1, maskBytes64);
-
-    // First make unsigned versions of x0, x1:
-    BigInteger unsignedX0 = BigInteger.valueOf(x0).and(mask64);
-    BigInteger unsignedX1 = BigInteger.valueOf(x1).and(mask64);
-
-    // Concatentate bits of x0 and x1, as unsigned 128 bit integer:
-    nextId = unsignedX0.shiftLeft(64).or(unsignedX1);
   }
-  
-  /** length in bytes of an ID */
-  public static final int ID_LENGTH = 16;
 
-  /** Generates a non-cryptographic globally unique id. */
-  public static byte[] randomId() {
-
-    // NOTE: we don't use Java's UUID.randomUUID() implementation here because:
-    //
-    //   * It's overkill for our usage: it tries to be cryptographically
-    //     secure, whereas for this use we don't care if someone can
-    //     guess the IDs.
-    //
-    //   * It uses SecureRandom, which on Linux can easily take a long time
-    //     (I saw ~ 10 seconds just running a Lucene test) when entropy
-    //     harvesting is falling behind.
-    //
-    //   * It loses a few (6) bits to version and variant and it's not clear
-    //     what impact that has on the period, whereas the simple ++ (mod 2^128)
-    //     we use here is guaranteed to have the full period.
-
-    byte bits[];
-    synchronized(idLock) {
-      bits = nextId.toByteArray();
-      nextId = nextId.add(BigInteger.ONE).and(mask128);
-    }
-    
-    // toByteArray() always returns a sign bit, so it may require an extra byte (always zero)
-    if (bits.length > ID_LENGTH) {
-      assert bits.length == ID_LENGTH + 1;
-      assert bits[0] == 0;
-      return Arrays.copyOfRange(bits, 1, bits.length);
-    } else {
-      byte[] result = new byte[ID_LENGTH];
-      System.arraycopy(bits, 0, result, result.length - bits.length, bits.length);
-      return result;
-    }
-  }
-  
-  /** 
-   * Helper method to render an ID as a string, for debugging
-   * <p>
-   * Returns the string {@code (null)} if the id is null.
-   * Otherwise, returns a string representation for debugging.
-   * Never throws an exception. The returned string may
-   * indicate if the id is definitely invalid.
-   */
-  public static String idToString(byte id[]) {
-    if (id == null) {
-      return "(null)";
-    } else {
-      StringBuilder sb = new StringBuilder();
-      sb.append(new BigInteger(1, id).toString(Character.MAX_RADIX));
-      if (id.length != ID_LENGTH) {
-        sb.append(" (INVALID FORMAT)");
-      }
-      return sb.toString();
-    }
-  }
-  
-  /** Just converts each int in the incoming {@link IntsRef} to each byte
-   *  in the returned {@link BytesRef}, throwing {@code IllegalArgumentException}
-   *  if any int value is out of bounds for a byte. */
-  public static BytesRef intsRefToBytesRef(IntsRef ints) {
-    byte[] bytes = new byte[ints.length];
-    for(int i=0;i<ints.length;i++) {
-      int x = ints.ints[ints.offset+i];
-      if (x < 0 || x > 255) {
-        throw new IllegalArgumentException("int at pos=" + i + " with value=" + x + " is out-of-bounds for byte");
-      }
-      bytes[i] = (byte) x;
-    }
-
-    return new BytesRef(bytes);
-  }
 }

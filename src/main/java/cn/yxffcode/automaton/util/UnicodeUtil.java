@@ -96,22 +96,12 @@ package cn.yxffcode.automaton.util;
 
 public final class UnicodeUtil {
   
-  /** A binary term consisting of a number of 0xff bytes, likely to be bigger than other terms
-   *  (e.g. collation keys) one would normally encounter, and definitely bigger than any UTF-8 terms.
-   *  <p>
-   *  WARNING: This is not a valid UTF8 Term  
-   **/
-  public static final BytesRef BIG_TERM = new BytesRef(
-      new byte[] {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1}
-  ); // TODO this is unrelated here find a better place for it
-  
   private UnicodeUtil() {} // no instance
 
   public static final int UNI_SUR_HIGH_START = 0xD800;
   public static final int UNI_SUR_HIGH_END = 0xDBFF;
   public static final int UNI_SUR_LOW_START = 0xDC00;
   public static final int UNI_SUR_LOW_END = 0xDFFF;
-  public static final int UNI_REPLACEMENT_CHAR = 0xFFFD;
 
   private static final long UNI_MAX_BMP = 0x0000FFFF;
 
@@ -222,115 +212,6 @@ public final class UnicodeUtil {
     //assert matches(s, offset, length, out, upto);
     return upto;
   }
-
-  // Only called from assert
-  /*
-  private static boolean matches(char[] source, int offset, int length, byte[] result, int upto) {
-    try {
-      String s1 = new String(source, offset, length);
-      String s2 = new String(result, 0, upto, StandardCharsets.UTF_8);
-      if (!s1.equals(s2)) {
-        //System.out.println("DIFF: s1 len=" + s1.length());
-        //for(int i=0;i<s1.length();i++)
-        //  System.out.println("    " + i + ": " + (int) s1.charAt(i));
-        //System.out.println("s2 len=" + s2.length());
-        //for(int i=0;i<s2.length();i++)
-        //  System.out.println("    " + i + ": " + (int) s2.charAt(i));
-
-        // If the input string was invalid, then the
-        // difference is OK
-        if (!validUTF16String(s1))
-          return true;
-
-        return false;
-      }
-      return s1.equals(s2);
-    } catch (UnsupportedEncodingException uee) {
-      return false;
-    }
-  }
-
-  // Only called from assert
-  private static boolean matches(String source, int offset, int length, byte[] result, int upto) {
-    try {
-      String s1 = source.substring(offset, offset+length);
-      String s2 = new String(result, 0, upto, StandardCharsets.UTF_8);
-      if (!s1.equals(s2)) {
-        // Allow a difference if s1 is not valid UTF-16
-
-        //System.out.println("DIFF: s1 len=" + s1.length());
-        //for(int i=0;i<s1.length();i++)
-        //  System.out.println("    " + i + ": " + (int) s1.charAt(i));
-        //System.out.println("  s2 len=" + s2.length());
-        //for(int i=0;i<s2.length();i++)
-        //  System.out.println("    " + i + ": " + (int) s2.charAt(i));
-
-        // If the input string was invalid, then the
-        // difference is OK
-        if (!validUTF16String(s1))
-          return true;
-
-        return false;
-      }
-      return s1.equals(s2);
-    } catch (UnsupportedEncodingException uee) {
-      return false;
-    }
-  }
-  */
-  public static boolean validUTF16String(CharSequence s) {
-    final int size = s.length();
-    for(int i=0;i<size;i++) {
-      char ch = s.charAt(i);
-      if (ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_HIGH_END) {
-        if (i < size-1) {
-          i++;
-          char nextCH = s.charAt(i);
-          if (nextCH >= UNI_SUR_LOW_START && nextCH <= UNI_SUR_LOW_END) {
-            // Valid surrogate pair
-          } else
-            // Unmatched high surrogate
-            return false;
-        } else
-          // Unmatched high surrogate
-          return false;
-      } else if (ch >= UNI_SUR_LOW_START && ch <= UNI_SUR_LOW_END)
-        // Unmatched low surrogate
-        return false;
-    }
-
-    return true;
-  }
-
-  public static boolean validUTF16String(char[] s, int size) {
-    for(int i=0;i<size;i++) {
-      char ch = s[i];
-      if (ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_HIGH_END) {
-        if (i < size-1) {
-          i++;
-          char nextCH = s[i];
-          if (nextCH >= UNI_SUR_LOW_START && nextCH <= UNI_SUR_LOW_END) {
-            // Valid surrogate pair
-          } else
-            return false;
-        } else
-          return false;
-      } else if (ch >= UNI_SUR_LOW_START && ch <= UNI_SUR_LOW_END)
-        // Unmatched low surrogate
-        return false;
-    }
-
-    return true;
-  }
-
-  // Borrowed from Python's 3.1.2 sources,
-  // Objects/unicodeobject.c, and modified (see commented
-  // out section, and the -1s) to disallow the reserved for
-  // future (RFC 3629) 5/6 byte sequence characters, and
-  // invalid 0xFE and 0xFF bytes.
-
-  /* Map UTF-8 encoded prefix byte to sequence length.  -1 (0xFF)
-   * means illegal prefix.  see RFC 2279 for details */
   static final int [] utf8CodeLength;
   static {
     final int v = Integer.MIN_VALUE;
@@ -352,43 +233,6 @@ public final class UnicodeUtil {
         3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
         4, 4, 4, 4, 4, 4, 4, 4 //, 5, 5, 5, 5, 6, 6, 0, 0
       };
-  }
-
-  /** 
-   * Returns the number of code points in this UTF8 sequence.
-   * 
-   * <p>This method assumes valid UTF8 input. This method 
-   * <strong>does not perform</strong> full UTF8 validation, it will check only the 
-   * first byte of each codepoint (for multi-byte sequences any bytes after 
-   * the head are skipped).  
-   * 
-   * @throws IllegalArgumentException If invalid codepoint header byte occurs or the 
-   *    content is prematurely truncated.
-   */
-  public static int codePointCount(BytesRef utf8) {
-    int pos = utf8.offset;
-    final int limit = pos + utf8.length;
-    final byte[] bytes = utf8.bytes;
-
-    int codePointCount = 0;
-    for (; pos < limit; codePointCount++) {
-      int v = bytes[pos] & 0xFF;
-      if (v <   /* 0xxx xxxx */ 0x80) { pos += 1; continue; }
-      if (v >=  /* 110x xxxx */ 0xc0) {
-        if (v < /* 111x xxxx */ 0xe0) { pos += 2; continue; } 
-        if (v < /* 1111 xxxx */ 0xf0) { pos += 3; continue; } 
-        if (v < /* 1111 1xxx */ 0xf8) { pos += 4; continue; }
-        // fallthrough, consider 5 and 6 byte sequences invalid. 
-      }
-
-      // Anything not covered above is invalid UTF8.
-      throw new IllegalArgumentException();
-    }
-
-    // Check if we didn't go over the limit on the last character.
-    if (pos > limit) throw new IllegalArgumentException();
-
-    return codePointCount;
   }
 
   /**
@@ -497,35 +341,6 @@ public final class UnicodeUtil {
           }
       }
       return new String(chars, 0, w);
-  }
-
-  // for debugging
-  public static String toHexString(String s) {
-    StringBuilder sb = new StringBuilder();
-    for(int i=0;i<s.length();i++) {
-      char ch = s.charAt(i);
-      if (i > 0) {
-        sb.append(' ');
-      }
-      if (ch < 128) {
-        sb.append(ch);
-      } else {
-        if (ch >= UNI_SUR_HIGH_START && ch <= UNI_SUR_HIGH_END) {
-          sb.append("H:");
-        } else if (ch >= UNI_SUR_LOW_START && ch <= UNI_SUR_LOW_END) {
-          sb.append("L:");
-        } else if (ch > UNI_SUR_LOW_END) {
-          if (ch == 0xffff) {
-            sb.append("F:");
-          } else {
-            sb.append("E:");
-          }
-        }
-        
-        sb.append("0x" + Integer.toHexString(ch));
-      }
-    }
-    return sb.toString();
   }
   
   /**
